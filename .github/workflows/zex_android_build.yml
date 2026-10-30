@@ -28,6 +28,9 @@ jobs:
 
       - uses: android-actions/setup-android@v4
 
+      - name: Install Swappy Frame Pacing
+        run: python3 misc/scripts/install_swappy_android.py
+
       - name: Install SCons
         run: |
           python3 -m pip install --upgrade pip
@@ -95,6 +98,8 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: android-actions/setup-android@v4
+      - name: Install Swappy Frame Pacing
+        run: python3 misc/scripts/install_swappy_android.py
       - name: Install SCons
         run: python3 -m pip install scons
       - uses: actions/cache@v4
