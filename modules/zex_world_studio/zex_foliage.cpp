@@ -32,6 +32,7 @@
 
 #include "zex_terrain.h"
 
+#include "core/object/class_db.h"
 #include "core/math/random_pcg.h"
 #include "scene/resources/multimesh.h"
 

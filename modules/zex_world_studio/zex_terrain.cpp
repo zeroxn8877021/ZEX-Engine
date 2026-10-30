@@ -30,6 +30,7 @@
 
 #include "zex_terrain.h"
 
+#include "core/object/class_db.h"
 #include "core/math/math_funcs.h"
 #include "scene/resources/mesh.h"
 

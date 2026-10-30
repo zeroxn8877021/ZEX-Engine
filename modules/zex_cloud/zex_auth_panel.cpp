@@ -30,6 +30,9 @@
 
 #include "zex_auth_panel.h"
 
+#include "core/object/callable_mp.h"
+#include "core/object/class_db.h"
+
 #include "scene/gui/button.h"
 #include "scene/gui/label.h"
 #include "scene/gui/line_edit.h"
