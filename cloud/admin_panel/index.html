@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZEX INTERACTIVE ADMIN PANEL</title>
+<style>
+  :root { --bg:#0b0b0d; --card:#17171b; --line:#2a2a31; --fg:#f2f2f4; --mut:#9a9aa6; --acc:#ffffff; --bad:#ff6b6b; --ok:#5fd38d; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.4 system-ui,sans-serif; background:var(--bg); color:var(--fg); }
+  header { display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:2; }
+  header h1 { font-size:16px; margin:0; letter-spacing:.08em; flex:1; }
+  main { max-width:960px; margin:0 auto; padding:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  input, select, textarea, button { font:inherit; color:var(--fg); background:#0f0f12; border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  input, select, textarea { width:100%; margin:4px 0 10px; }
+  button { cursor:pointer; background:var(--acc); color:#000; border:0; font-weight:600; }
+  button.sec { background:#26262c; color:var(--fg); }
+  button.danger { background:var(--bad); color:#000; }
+  nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  nav button { background:#26262c; color:var(--fg); }
+  nav button.on { background:var(--acc); color:#000; }
+  table { width:100%; border-collapse:collapse; display:block; overflow-x:auto; }
+  th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  .msg { padding:8px 12px; border-radius:8px; margin-bottom:12px; }
+  .msg.bad { background:#3a1818; color:var(--bad); } .msg.ok { background:#12301f; color:var(--ok); }
+  .row { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }
+  .hidden { display:none; } small { color:var(--mut); }
+</style>
+</head>
+<body>
+<header><h1>ZEX INTERACTIVE ADMIN PANEL</h1><span id="who"></span><button id="logout" class="sec hidden">Log out</button></header>
+<main>
+  <div id="msg"></div>
+
+  <section id="connect" class="card">
+    <h3>Connect</h3>
+    <small>Use only the project URL and the public <b>anon</b> key. Never paste the service_role key here. Access is enforced on the server by Row Level Security.</small>
+    <label>Supabase project URL<input id="url" placeholder="https://xxxx.supabase.co" value="https://muyzaelxiwpfxahnzpew.supabase.co"></label>
+    <label>Anon (public) key<input id="anon" placeholder="sb_publishable_... or eyJ..." value="sb_publishable_a4-9XUcvBLQqUL_UsFER5g_J5I-8LoC"></label>
+    <label>Email<input id="email" type="email" autocomplete="username"></label>
+    <label>Password<input id="password" type="password" autocomplete="current-password"></label>
+    <button id="login">Log in</button>
+  </section>
+
+  <section id="app" class="hidden">
+    <nav id="tabs"></nav>
+    <div id="view"></div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+"use strict";
+let sb = null, me = null;
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); kids.flat().forEach(k => e.append(k)); return e; };
+function flash(text, ok = false) { const m = $("msg"); m.replaceChildren(el("div", { className: "msg " + (ok ? "ok" : "bad"), textContent: text })); setTimeout(() => m.replaceChildren(), 6000); }
+
+// Only non-secret connection details are remembered in this browser.
+$("url").value = localStorage.getItem("zex_url") || "";
+$("anon").value = localStorage.getItem("zex_anon") || "";
+
+$("login").onclick = async () => {
+  const url = $("url").value.trim(), anon = $("anon").value.trim();
+  if (!url.startsWith("https://")) return flash("Project URL must start with https://");
+  localStorage.setItem("zex_url", url); localStorage.setItem("zex_anon", anon);
+  sb = supabase.createClient(url, anon);
+  const { data, error } = await sb.auth.signInWithPassword({ email: $("email").value.trim(), password: $("password").value });
+  if (error) return flash(error.message);
+  const { data: prof, error: e2 } = await sb.from("profiles").select("*").eq("id", data.user.id).single();
+  if (e2 || !prof || !["admin", "super_admin"].includes(prof.role)) {
+    await sb.auth.signOut(); return flash("This account is not an administrator.");
+  }
+  me = prof; $("password").value = "";
+  $("connect").classList.add("hidden"); $("app").classList.remove("hidden"); $("logout").classList.remove("hidden");
+  $("who").textContent = prof.email + " (" + prof.role + ")";
+  buildTabs();
+};
+$("logout").onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+async function audit(action, target, details) { await sb.from("audit_log").insert({ action, target, details }); }
+
+const TABS = { Dashboard: dashboard, Releases: releases, "Remote Config": remoteConfig, Announcements: announcements, Users: users, Assets: assets, "Audit Log": auditLog };
+function buildTabs() {
+  const nav = $("tabs"); nav.replaceChildren();
+  Object.keys(TABS).forEach((name, i) => {
+    const b = el("button", { textContent: name, onclick: () => { [...nav.children].forEach(c => c.classList.remove("on")); b.classList.add("on"); TABS[name](); } });
+    nav.append(b); if (i === 0) b.click();
+  });
+}
+function table(cols, rows, actions) {
+  const t = el("table"), h = el("tr", {}, cols.map(c => el("th", { textContent: c })));
+  if (actions) h.append(el("th"));
+  t.append(h);
+  rows.forEach(r => { const tr = el("tr", {}, cols.map(c => el("td", { textContent: typeof r[c] === "object" && r[c] !== null ? JSON.stringify(r[c]) : String(r[c] ?? "") }))); if (actions) tr.append(el("td", {}, actions(r))); t.append(tr); });
+  return t;
+}
+async function count(tbl) { const { count: n } = await sb.from(tbl).select("*", { count: "exact", head: true }); return n ?? 0; }
+
+async function dashboard() {
+  const v = $("view"); v.replaceChildren(el("p", { textContent: "Loading..." }));
+  const [u, p, r, a] = await Promise.all([count("profiles"), count("projects"), count("engine_releases"), count("assets")]);
+  const { data: prof } = await sb.from("profiles").select("engine_version");
+  const byVer = {}; (prof || []).forEach(x => { const k = x.engine_version || "unknown"; byVer[k] = (byVer[k] || 0) + 1; });
+  v.replaceChildren(
+    el("div", { className: "row" }, [["Registered users", u], ["Cloud projects", p], ["Releases", r], ["Assets", a]].map(([k, n]) => el("div", { className: "card" }, el("small", { textContent: k }), el("h2", { textContent: n })))),
+    el("div", { className: "card" }, el("h3", { textContent: "Engine version adoption" }), table(["version", "users"], Object.entries(byVer).map(([version, users]) => ({ version, users }))))
+  );
+}
+
+async function releases() {
+  const v = $("view"), { data, error } = await sb.from("engine_releases").select("*").order("created_at", { ascending: false });
+  if (error) return flash(error.message);
+  const f = { version: el("input", { placeholder: "1.0.0" }), channel: el("select", {}, ["stable", "beta", "dev"].map(c => el("option", { textContent: c }))), min: el("input", { placeholder: "minimum supported version" }), url: el("input", { placeholder: "https://... download URL" }), sha: el("input", { placeholder: "SHA-256 of the file" }), sig: el("input", { placeholder: "manifest signature" }), notes: el("textarea", { rows: 4, placeholder: "Release notes" }), pub: el("input", { type: "checkbox" }) };
+  const add = el("button", { textContent: "Save release", onclick: async () => {
+    if (!f.version.value.trim()) return flash("Version is required.");
+    const row = { version: f.version.value.trim(), channel: f.channel.value, min_supported_version: f.min.value.trim() || null, download_url: f.url.value.trim() || null, sha256: f.sha.value.trim() || null, manifest_signature: f.sig.value.trim() || null, release_notes: f.notes.value, published: f.pub.checked, created_by: me.id };
+    const { error: e } = await sb.from("engine_releases").upsert(row, { onConflict: "version,channel" });
+    if (e) return flash(e.message); await audit("release.save", row.version, { channel: row.channel, published: row.published }); flash("Saved.", true); releases();
+  } });
+  v.replaceChildren(
+    el("div", { className: "card" }, el("h3", { textContent: "New / update release" }), f.version, f.channel, f.min, f.url, f.sha, f.sig, f.notes, el("label", {}, f.pub, " Published"), el("br"), add),
+    el("div", { className: "card" }, table(["version", "channel", "min_supported_version", "published", "created_at"], data, r => el("button", { className: "sec", textContent: r.published ? "Unpublish" : "Publish", onclick: async () => { const { error: e } = await sb.from("engine_releases").update({ published: !r.published }).eq("id", r.id); if (e) return flash(e.message); await audit(r.published ? "release.unpublish" : "release.publish", r.version, {}); releases(); } })))
+  );
+}
+
+async function remoteConfig() {
+  const v = $("view"), { data, error } = await sb.from("remote_config").select("*").order("key");
+  if (error) return flash(error.message);
+  const k = el("input", { placeholder: "key, e.g. feature.block_scripting" }), val = el("input", { placeholder: 'JSON value, e.g. true or {"max":5}' }), flag = el("input", { type: "checkbox" });
+  const save = el("button", { textContent: "Publish value", onclick: async () => {
+    let parsed; try { parsed = JSON.parse(val.value); } catch { return flash("Value must be valid JSON."); }
+    if (!k.value.trim()) return flash("Key is required.");
+    const { error: e } = await sb.from("remote_config").upsert({ key: k.value.trim(), value: parsed, is_feature_flag: flag.checked, updated_by: me.id, updated_at: new Date().toISOString() });
+    if (e) return flash(e.message); await audit("config.set", k.value.trim(), { value: parsed }); flash("Published.", true); remoteConfig();
+  } });
+  v.replaceChildren(el("div", { className: "card" }, el("h3", { textContent: "Remote configuration & feature flags" }), k, val, el("label", {}, flag, " Feature flag"), el("br"), save),
+    el("div", { className: "card" }, table(["key", "value", "is_feature_flag", "updated_at"], data, r => el("button", { className: "danger", textContent: "Delete", onclick: async () => { if (!confirm("Delete " + r.key + "?")) return; const { error: e } = await sb.from("remote_config").delete().eq("key", r.key); if (e) return flash(e.message); await audit("config.delete", r.key, {}); remoteConfig(); } }))));
+}
+
+async function announcements() {
+  const v = $("view"), { data, error } = await sb.from("announcements").select("*").order("created_at", { ascending: false });
+  if (error) return flash(error.message);
+  const t = el("input", { placeholder: "Title" }), b = el("textarea", { rows: 3, placeholder: "Message" }), kind = el("select", {}, ["info", "maintenance", "update"].map(c => el("option", { textContent: c })));
+  const post = el("button", { textContent: "Publish announcement", onclick: async () => {
+    if (!t.value.trim()) return flash("Title is required.");
+    const { error: e } = await sb.from("announcements").insert({ title: t.value.trim(), body: b.value, kind: kind.value, active: true });
+    if (e) return flash(e.message); await audit("announcement.create", t.value.trim(), {}); announcements();
+  } });
+  v.replaceChildren(el("div", { className: "card" }, el("h3", { textContent: "New announcement" }), t, kind, b, post),
+    el("div", { className: "card" }, table(["title", "kind", "active", "created_at"], data, r => el("button", { className: "sec", textContent: r.active ? "Deactivate" : "Activate", onclick: async () => { const { error: e } = await sb.from("announcements").update({ active: !r.active }).eq("id", r.id); if (e) return flash(e.message); announcements(); } }))));
+}
+
+async function users() {
+  const v = $("view"), { data, error } = await sb.from("profiles").select("id,email,role,engine_version,created_at").order("created_at", { ascending: false });
+  if (error) return flash(error.message);
+  const canEdit = me.role === "super_admin";
+  v.replaceChildren(el("div", { className: "card" }, el("small", { textContent: canEdit ? "As super_admin you can change roles (enforced by a database trigger)." : "Only a super_admin can change roles." }),
+    table(["email", "role", "engine_version", "created_at"], data, canEdit ? (r => { const s = el("select", {}, ["user", "admin", "super_admin"].map(x => el("option", { textContent: x, selected: x === r.role }))); s.onchange = async () => { const { error: e } = await sb.from("profiles").update({ role: s.value }).eq("id", r.id); if (e) { flash(e.message); return users(); } await audit("user.role", r.email, { role: s.value }); flash("Role updated.", true); }; return s; }) : null)));
+}
+
+async function assets() {
+  const v = $("view"), { data, error } = await sb.from("assets").select("*").order("created_at", { ascending: false });
+  if (error) return flash(error.message);
+  const n = el("input", { placeholder: "Asset name" }), c = el("input", { placeholder: "Category" }), ver = el("input", { placeholder: "Version", value: "1.0.0" }), path = el("input", { placeholder: "Storage path (bucket/file)" }), sha = el("input", { placeholder: "SHA-256" });
+  const add = el("button", { textContent: "Add asset metadata", onclick: async () => {
+    if (!n.value.trim()) return flash("Name is required.");
+    const { error: e } = await sb.from("assets").insert({ name: n.value.trim(), category: c.value.trim() || null, version: ver.value.trim() || "1.0.0", storage_path: path.value.trim() || null, sha256: sha.value.trim() || null });
+    if (e) return flash(e.message); await audit("asset.create", n.value.trim(), {}); assets();
+  } });
+  v.replaceChildren(el("div", { className: "card" }, el("h3", { textContent: "Asset library" }), n, c, ver, path, sha, add),
+    el("div", { className: "card" }, table(["name", "category", "version", "published"], data, r => el("button", { className: "sec", textContent: r.published ? "Unpublish" : "Publish", onclick: async () => { const { error: e } = await sb.from("assets").update({ published: !r.published }).eq("id", r.id); if (e) return flash(e.message); await audit("asset.publish", r.name, { published: !r.published }); assets(); } }))));
+}
+
+async function auditLog() {
+  const { data, error } = await sb.from("audit_log").select("*").order("created_at", { ascending: false }).limit(200);
+  if (error) return flash(error.message);
+  $("view").replaceChildren(el("div", { className: "card" }, table(["created_at", "action", "target", "details", "actor"], data)));
+}
+</script>
+</body>
+</html>

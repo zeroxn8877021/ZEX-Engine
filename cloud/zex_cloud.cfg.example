@@ -1,0 +1,5 @@
+; Copy to user://zex_cloud.cfg (or load from any path with ZexAuth.load_config()).
+; Use the PUBLIC anon key only. Never put the service_role key here.
+[supabase]
+url="https://YOUR-PROJECT.supabase.co"
+anon_key="YOUR_ANON_PUBLIC_KEY"

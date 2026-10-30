@@ -1,0 +1,118 @@
+name: ZEX Android Build
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      build_templates:
+        description: "Also build Android export templates (APK/AAB export for games)"
+        type: boolean
+        default: true
+
+env:
+  SCONS_CACHE: ${{ github.workspace }}/.scons_cache
+
+jobs:
+  editor-apk:
+    name: ZEX Editor APK (arm64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install SCons
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install scons
+
+      - name: Restore SCons cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SCONS_CACHE }}
+          key: scons-editor-android-${{ github.sha }}
+          restore-keys: scons-editor-android-
+
+      - name: Build native editor library (arm64)
+        run: |
+          scons platform=android target=editor arch=arm64 production=yes \
+            cache_path="$SCONS_CACHE" redirect_build_objects=no
+
+      - name: Prepare signing keystore
+        env:
+          KS_B64: ${{ secrets.ZEX_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ZEX_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ZEX_KEYSTORE_ALIAS }}
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ] && [ -n "$KS_ALIAS" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/zex.keystore"
+            echo "Using release keystore from repository secrets."
+            ALIAS="$KS_ALIAS"; PASS="$KS_PASS"
+          else
+            echo "::warning::No ZEX_KEYSTORE_* secrets set. Generating a throwaway test keystore (fine for testing, NOT for publishing)."
+            ALIAS=zextest; PASS=zextest123
+            keytool -genkeypair -v -keystore "$RUNNER_TEMP/zex.keystore" -alias "$ALIAS" \
+              -keyalg RSA -keysize 2048 -validity 10000 -storepass "$PASS" -keypass "$PASS" \
+              -dname "CN=ZEX INTERACTIVE, O=ZEX INTERACTIVE, C=US"
+          fi
+          echo "GODOT_ANDROID_SIGN_KEYSTORE=$RUNNER_TEMP/zex.keystore" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_ALIAS=$ALIAS" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_SIGN_PASSWORD=$PASS" >> "$GITHUB_ENV"
+
+      - name: Package editor APK
+        working-directory: platform/android/java
+        run: |
+          ./gradlew generateGodotEditor
+          ls -l ../../../bin/android_editor_builds/
+
+      - name: Upload ZEX Editor APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZEX-Editor-Android-arm64
+          path: bin/android_editor_builds/*.apk
+          if-no-files-found: error
+
+  export-templates:
+    name: Android export templates
+    if: github.event_name == 'push' || inputs.build_templates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, arm32]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - name: Install SCons
+        run: python3 -m pip install scons
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.SCONS_CACHE }}
+          key: scons-template-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: scons-template-${{ matrix.arch }}-
+      - name: Build template (${{ matrix.arch }})
+        run: |
+          for t in template_debug template_release; do
+            scons platform=android target=$t arch=${{ matrix.arch }} production=yes \
+              cache_path="$SCONS_CACHE" redirect_build_objects=no
+          done
+      - name: Package templates
+        working-directory: platform/android/java
+        run: ./gradlew generateGodotTemplates
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ZEX-Android-Templates-${{ matrix.arch }}
+          path: bin/android_*.zip
+          if-no-files-found: warn
