@@ -157,5 +157,9 @@ drop policy if exists "audit admin insert" on public.audit_log;
 create policy "audit admin read" on public.audit_log for select using (public.is_admin());
 create policy "audit admin insert" on public.audit_log for insert with check (public.is_admin() and actor = auth.uid());
 
+-- Trigger functions must not be callable through the API.
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+revoke execute on function public.protect_profile_role() from public, anon, authenticated;
+
 -- After creating your own account, promote it ONCE from the SQL editor (this runs with full rights):
 --   update public.profiles set role = 'super_admin' where email = 'you@example.com';

@@ -58,8 +58,8 @@ const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.crea
 function flash(text, ok = false) { const m = $("msg"); m.replaceChildren(el("div", { className: "msg " + (ok ? "ok" : "bad"), textContent: text })); setTimeout(() => m.replaceChildren(), 6000); }
 
 // Only non-secret connection details are remembered in this browser.
-$("url").value = localStorage.getItem("zex_url") || "";
-$("anon").value = localStorage.getItem("zex_anon") || "";
+$("url").value = localStorage.getItem("zex_url") || $("url").value;
+$("anon").value = localStorage.getItem("zex_anon") || $("anon").value;
 
 $("login").onclick = async () => {
   const url = $("url").value.trim(), anon = $("anon").value.trim();
