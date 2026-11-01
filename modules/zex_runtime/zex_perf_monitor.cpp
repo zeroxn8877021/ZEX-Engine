@@ -2,6 +2,8 @@
 
 #include "zex_perf_monitor.h"
 
+#include "core/object/class_db.h"
+
 #include "core/os/os.h"
 #include "main/performance.h"
 #include "scene/gui/label.h"

@@ -2,6 +2,8 @@
 
 #include "zex_graphics.h"
 
+#include "core/object/class_db.h"
+
 #include "core/config/project_settings.h"
 #include "scene/main/viewport.h"
 #include "scene/resources/environment.h"

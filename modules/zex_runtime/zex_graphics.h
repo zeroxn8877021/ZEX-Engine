@@ -4,6 +4,7 @@
 
 #include "core/object/ref_counted.h"
 #include "core/variant/dictionary.h"
+#include "core/variant/type_info.h"
 
 class Viewport;
 class Environment;
