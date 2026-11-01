@@ -1,32 +1,27 @@
 # ZEX Progress Report
 
-## Completed
-- Source audit (`docs_zex/AUDIT.md`)
-- Branding: engine name, Android app id/label, launcher + monochrome icons, splash, app icon
-- GitHub Actions workflow to build the Android editor APK and export templates
+Last updated: 2026-11-01. Everything below is in the repository; **nothing has been compiled or run on a device by the author** (the sandbox used to write it had no compiler). The first GitHub Actions build is the real test. If it fails, fix the errors it reports before adding features.
 
-- ZEX World Studio, part 1 (`modules/zex_world_studio`): `ZexTerrain` node (generate noise terrain, heightmap import/export, raise/lower/smooth/flatten brushes with radius/strength/softness, subdivision, height/normal queries) and `ZexFoliage` node (scatter trees/grass/rocks with count, random rotation, random scale, slope limit). C++ unit tests in `modules/zex_world_studio/tests/`.
-- ZEX Cloud, part 1 (`modules/zex_cloud`): `ZexAuth` (Supabase email/password sign-up, login, logout, token refresh, encrypted saved session, offline-safe, no hardcoded keys) and `ZexAuthPanel` (touch-friendly login/sign-up UI). Unit tests for validation and error parsing.
-- Supabase schema (`cloud/supabase/schema.sql`): profiles + roles, engine releases, remote config / feature flags, announcements, projects, assets, audit log; Row Level Security on every table; role changes locked to super_admin by a trigger.
-- Admin Panel (`cloud/admin_panel/index.html`): admin login with server-side role check, dashboard, releases, remote config / feature flags, announcements, users and roles, assets, audit log. Uses only the anon key.
-- Config template: `cloud/zex_cloud.cfg.example`.
-- Supabase project connected and schema applied (migration `zex_initial_schema`): 7 tables, RLS on all, role-protection trigger. `cloud/zex_cloud.cfg` holds the public URL and publishable key; the Admin Panel is prefilled with them.
-
-## In progress
-- Android-first editor layout (Phase 1) – uses Godot's existing Android editor; custom mobile layout not started
+## Completed (code written)
+- Source audit: `docs_zex/AUDIT.md`.
+- Branding, applied automatically at build time by `misc/zex/apply_branding.py` (called from `modules/zex_blocks/config.py`):
+  engine name, Android app id/label, "Godot" -> "ZEX" in editor UI strings, About dialog (new ZEX INTERACTIVE tab; Godot license, authors and donors kept), ZEX logo as editor icon, launcher icons, splash and app icon generated from `misc/zex/branding/zex_logo.svg`.
+- Android editor orientation: sensor landscape on phones, project manager can rotate freely.
+- ZEX World Studio, part 1 (`modules/zex_world_studio`): `ZexTerrain` (noise terrain, heightmap import/export, raise/lower/smooth/flatten brushes, subdivision) and `ZexFoliage` (scatter with density, random rotation/scale, slope limit).
+- ZEX Cloud (`modules/zex_cloud`): `ZexAuth` (Supabase email/password sign-up, login, logout, refresh, encrypted saved session, offline-safe) and `ZexAuthPanel` (touch-friendly login/sign-up UI).
+- ZEX Project (`modules/zex_project`): `ZexLog` (local project/import/export log with SHA-256, search/filter, diagnostic report, clear) and `ZexPackage` (`.zexproj` / `.zexbuild` create, validate, extract with integrity hashes and path protection). Format: `docs_zex/ZEX_PACKAGE_FORMAT.md`.
+- ZEX Runtime (`modules/zex_runtime`): `ZexGraphics` (Very Low .. Ultra presets, separate Android/PC) and `ZexPerfMonitor` (FPS, memory, draw calls, overlay, section profiler).
+- ZEX Block Scripting (`modules/zex_blocks`): `ZexBlockCompiler` turns block graphs into real GDScript (30 blocks, validation, injection protection, catalog). Docs: `docs_zex/BLOCK_SCRIPTING.md`.
+- Supabase: schema applied to the connected project (7 tables, Row Level Security, role-protection trigger); `cloud/supabase/schema.sql`.
 
 ## Not started
-Hooking ZexAuthPanel into the editor menu, OTA update checker/downloader with signed manifests, Realtime subscription, cloud project backup. Rest of Phase 2 (touch brush editor UI/dock, texture painting layers, grid/surface snapping, roads, rivers, lakes) and Phases 3–7:  Model Previewer, Block Scripting, Graphics presets, Log System, .zexproj/.zexbuild, Build Center, Supabase, Admin Panel, OTA.
+- Block scripting visual editor (GraphEdit front-end for the compiler).
+- Touch brush panel, texture painting layers, roads, rivers, lakes, grid/surface snapping, object grouping.
+- 3D Model Previewer, ZEX Build Center screen, OTA update checker, Android-first custom editor layout.
+- Hooking the login panel and tools into editor menus.
+- Unit tests exist in the author's copy for several modules but are not part of this repository yet.
 
-## Modified files
-version.py, main/splash.png, main/app_icon.png, platform/android/java/editor/build.gradle, platform/android/java/editor/src/main/res/values/strings.xml, platform/android/java/lib/src/main/res/mipmap*/icon_*.webp, .github/workflows/*, misc/zex/branding/*, docs_zex/*
-
-## Build status
-NOT yet built. The new C++ module was checked by reading it against the engine headers only; it was not compiled (no SCons/NDK in the sandbox). First build runs on GitHub Actions (sandbox here has no network to compile/download SDKs).
-
-## Known bugs / risks
-- Unverified compile (first CI run may need small fixes).
-- Editor-internal icons (`editor/icons/Godot.svg`) still Godot's; need an SVG version of the ZEX logo.
-
-## Testing
-Unit tests written but not run yet. After a Linux build run: `./bin/godot.linuxbsd.editor.x86_64 --test --test-case="*ZexTerrain*"`
+## Known risks
+- Compile errors are likely in the new modules on the first build.
+- `.github/workflows` could not be changed by the assistant (missing permission); the existing workflow is used as is. Branding runs from `modules/zex_blocks/config.py` instead.
+- Release signing needs your own keystore (secrets `ZEX_KEYSTORE_BASE64`, `ZEX_KEYSTORE_PASSWORD`, `ZEX_KEYSTORE_ALIAS`).
