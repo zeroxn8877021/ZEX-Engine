@@ -2,6 +2,8 @@
 
 #include "zex_log.h"
 
+#include "core/object/class_db.h"
+
 #include "core/config/engine.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"

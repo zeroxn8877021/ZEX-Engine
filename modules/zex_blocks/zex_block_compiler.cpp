@@ -2,6 +2,8 @@
 
 #include "zex_block_compiler.h"
 
+#include "core/object/class_db.h"
+
 #include "modules/gdscript/gdscript.h"
 
 #include "core/templates/hash_map.h"
