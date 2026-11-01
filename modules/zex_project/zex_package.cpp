@@ -2,6 +2,8 @@
 
 #include "zex_package.h"
 
+#include "core/object/class_db.h"
+
 #include "modules/zip/zip_packer.h"
 #include "modules/zip/zip_reader.h"
 
